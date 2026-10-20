@@ -1,28 +1,22 @@
 [project]
 name = "entrance-tagging"
 version = "0.1.0"
-description = "Add your description here"
+description = "Entrance detection method"
 readme = "README.md"
 authors = [
     { name = "tiago-bd-olveira" }
 ]
 requires-python = ">=3.14"
 dependencies = [
-    "imbalanced-learn",
-    "imblearn",
+    "imbalanced-learn>=0.13",
     "matplotlib",
     "numpy",
     "openpyxl",
-    "pandas",
-    "scikit-learn",
+    "pandas>=2.2",
+    "scikit-learn>=1.6",
     "statsmodels",
     "xlrd",
-    "xlwt",
 ]
 
-[project.scripts]
-entrance-tagging = "entrance_tagging:main"
-
-[build-system]
-requires = ["uv_build>=0.13.3,<0.14.0"]
-build-backend = "uv_build"
+[tool.uv]
+package = false
