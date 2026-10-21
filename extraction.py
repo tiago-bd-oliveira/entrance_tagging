@@ -1,18 +1,17 @@
-# -*- coding: utf-8 -*-
 """
 Created on Sun Feb  3 17:12:11 2019
 
 @author: xiaohu
 """
-from __future__ import division
+import argparse
+import copy
 import csv
-import xlwt
-import xlrd
-import os
-import copy;
-import numpy as np
 from collections import Counter
-import pandas as pd
+from pathlib import Path
+
+import numpy as np
+
+DATA_DIR = Path(__file__).parent / "data"
 contexts = ['service_ways','landmark','post','main road','parking','pedestrian ways','address street','axis','railway']
 context_feature =['service_way_dis','landmark_dis','post_dis','main_p_dis','park_dis','ped_dis','addr_sort','axis_sort','rail_dis']
 category = []; """
@@ -52,7 +51,7 @@ class DataExtraction:
                 feature2: second feature set 
         '''
         sum_dis = 0;
-        for i in range(0,len(feature1)):
+        for i in range(len(feature1)):
             sum_dis += abs(feature1[i]-feature2[i]);
         sum_dis = sum_dis/len(feature1);
         return sum_dis;
@@ -74,12 +73,8 @@ class DataExtraction:
                               to save the imputed value of each feature
             '''
 
-        if os.path.exists(missing_filename):
-            os.remove(missing_filename);
-        f = xlwt.Workbook();
-        ws = f.add_sheet('Sheet1');
-        cur_line = 0;
-        for column_name in head:
+        rows = [];
+        for column_name in sorted(head):
             if column_name != 'class':
                 cur_valus = [];
                 miss_value = 0;
@@ -104,10 +99,9 @@ class DataExtraction:
                         miss_value = np.median(cur_valus);
                     for miss_index in missing_row_indexs:
                         training_features[miss_index][column_name] = miss_value;
-                ws.write(cur_line,0,column_name);
-                ws.write(cur_line,1,miss_value);
-                cur_line+=1;
-        f.save(missing_filename);
+                rows.append([column_name, miss_value]);
+        with open(missing_filename, 'w', newline='') as f:
+            csv.writer(f).writerows(rows)
         return training_features;
                         
     def resampling(self,entrance_index, dis_array, feature_values, feature_distance_thres,pyhsical_distance_thres):
@@ -128,9 +122,9 @@ class DataExtraction:
                                     select the strong negative samples
             '''
         in_range_feature_list = [];
-        total_samples_index = range(0,len(dis_array));
+        total_samples_index = range(len(dis_array));
         spatil_distance_list = []
-        for i in range(0,len(dis_array)):
+        for i in range(len(dis_array)):
             temp_dis = self.get_distance(dis_array,entrance_index,i)
             if temp_dis < pyhsical_distance_thres:
                 in_range_feature_list.append(i);
@@ -141,7 +135,7 @@ class DataExtraction:
              b=[x[i] for x in feature_values];
              max_b = max(b);
              min_b = min(b);
-             for j in range(0,len(feature_values)):
+             for j in range(len(feature_values)):
                  if max_b-min_b != 0:
                     norm_features[j][i] = (feature_values[j][i]-min_b)/(max_b-min_b);
                  else:
@@ -171,9 +165,8 @@ class DataExtraction:
             raw_file_name: name of the file that contains the raw features extracted from OSM 
             group: the index of the test group
             '''
-        workbook = xlrd.open_workbook(raw_file_name)
-        sheet2 = workbook.sheet_by_index(0) 
-        sheet2 = workbook.sheet_by_name('Sheet1')
+        with open(raw_file_name, newline='') as f:
+            rows = list(csv.reader(f))
         negative_training_features = [];
         unique_training_features = [];
         head = set()
@@ -183,30 +176,30 @@ class DataExtraction:
         entrances = [];
         sum_training_features = [];
         cur_row_index = 0;
-        while cur_row_index < sheet2.nrows:
-            entrance_index = int(sheet2.cell(cur_row_index,1).value)
-            entrance_x = float(sheet2.cell(cur_row_index,2).value)
-            entrance_y = float(sheet2.cell(cur_row_index,3).value)
-            cur_sample_num = int(sheet2.cell(cur_row_index,4).value);
+        while cur_row_index < len(rows):
+            entrance_index = int(float(rows[cur_row_index][1]))
+            entrance_x = float(rows[cur_row_index][2])
+            entrance_y = float(rows[cur_row_index][3])
+            cur_sample_num = int(float(rows[cur_row_index][4]));
             if cur_sample not in test_index_list:
                 dis_array = [];
                 cur_building_features = []
                 temp_row_count = 0;
-                feature_num = int((int(sheet2.cell(cur_row_index+1,0).value-4))/2);
+                feature_num = int((int(float(rows[cur_row_index+1][0]))-4)/2);
                 temp_feature_valus =  [([0] * feature_num) for p in range(cur_sample_num)]
                 temp_feature_names = set()
                 for row in range(cur_row_index+1,cur_row_index+cur_sample_num+1):
-                    dis_array.append(float(sheet2.cell(row,1).value))
+                    dis_array.append(float(rows[row][1]))
                     features = {};
-                    for j in range(0,feature_num):
-                        temp_feature_valus[temp_row_count][j] = float(sheet2.cell(row,4+j*2+1).value);
-                        column_name = str(sheet2.cell(row,4+j*2).value);
+                    for j in range(feature_num):
+                        temp_feature_valus[temp_row_count][j] = float(rows[row][4+j*2+1]);
+                        column_name = str(rows[row][4+j*2]);
                         temp_feature_names.add(column_name);
                         if column_name in category:
-                            features[column_name] = 'str'+str(sheet2.cell(row,4+j*2+1).value);#float(sheet2.cell(row,4+j*2+1).value);
+                            features[column_name] = 'str'+str(rows[row][4+j*2+1]);#float(rows[row][4+j*2+1]);
                         else:
-                            features[column_name] = float(sheet2.cell(row,4+j*2+1).value);                          
-                        head.add(str(sheet2.cell(row,4+j*2).value));
+                            features[column_name] = float(rows[row][4+j*2+1]);                          
+                        head.add(str(rows[row][4+j*2]));
                         """test"""
                     for new_feat in new_exist_feat_names:   
                         head.add(new_feat);
@@ -230,54 +223,38 @@ class DataExtraction:
                         if i == index:
                            feat[Class] = 1;
                            entrances.append([entrance_x,entrance_y])
-                           for j in range(0,int(sample_result[k])):
+                           for j in range(int(sample_result[k])):
                                new_feat = copy.deepcopy(feat);
                                sum_training_features.append(new_feat);
                            bool_matched = True;
                            break;
-                    if not bool_matched:
-                        if  i in negative_sample_indexs:
-                            feat[Class] = 0;
-                            negative_training_features.append(feat)
-                            new_feat = copy.deepcopy(feat);
-                            sum_training_features.append(new_feat);
+                    if not bool_matched and i in negative_sample_indexs:
+                        feat[Class] = 0;
+                        negative_training_features.append(feat)
+                        new_feat = copy.deepcopy(feat);
+                        sum_training_features.append(new_feat);
 
             cur_row_index = cur_row_index + cur_sample_num + 1;
             cur_sample = cur_sample + 1;
         self.process_missing_data(sum_training_features,head,missing_filename);
 
         """save into csv"""
-        csv_file = r'.\\Data\\'+str(group)+'\\features.csv';
-        if os.path.exists(csv_file):
-            os.remove(csv_file);
-        with open(csv_file, 'w') as csvfile:
-            fieldnames = list(head);
+        csv_file = DATA_DIR / str(group) / 'features.csv'
+        with open(csv_file, 'w', newline='') as csvfile:
+            fieldnames = sorted(head);  # fixed column order keeps results reproducible
             writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
             writer.writeheader()
             for dic in sum_training_features:
                 writer.writerow(dic)
                 
         """save entrance data"""
-        test_e_file = r'.\\Data\\'+str(group)+'\\positive_entrance.xls'
-        f_test_head = xlwt.Workbook();
-        ws_test_head = f_test_head.add_sheet('Sheet1');
-        if os.path.exists(test_e_file):
-            os.remove(test_e_file);
-        for i, data in enumerate(entrances):
-            ws_test_head.write(i,0,data[0]);
-            ws_test_head.write(i,1,data[1]);
-        f_test_head.save(test_e_file);
+        test_e_file = DATA_DIR / str(group) / 'positive_entrance.csv'
+        with open(test_e_file, 'w', newline='') as f:
+            csv.writer(f).writerows(entrances)
                 
     def load_missing_data(self,group,missing_filename):
-        workbook = xlrd.open_workbook(missing_filename)
-        sheet2 = workbook.sheet_by_index(0)
-        sheet2 = workbook.sheet_by_name('Sheet1')
-        row = 0;
-        missing = {};
-        while row < sheet2.nrows:
-            missing[str(sheet2.cell(row,0).value)] = float(sheet2.cell(row,1).value);
-            row = row +1;
-        return missing;
+        with open(missing_filename, newline='') as f:
+            return {name: float(value) for name, value in csv.reader(f)}
 
     def load_testing_data(self,test_list,raw_file_name,missing_filename,group):
         ''' extract the test samples for the test group 'group'
@@ -288,22 +265,18 @@ class DataExtraction:
             group: the index of the test group
             '''
         '''files used to save the head information of each test buildings, such as the true positive sample'''    
-        test_head_file = r'.\\Data\\'+str(group)+'\\test_rf_head.xls'
-        if os.path.exists(test_head_file):
-            os.remove(test_head_file);
-        f_test_head = xlwt.Workbook();
-        ws_test_head = f_test_head.add_sheet('Sheet1');
+        test_head_file = DATA_DIR / str(group) / 'test_rf_head.csv'
+        test_head = {};  # (row, column) -> value
         cur_line = 0;
         for i, data in enumerate(test_list):
-            ws_test_head.write(cur_line,i,data);
+            test_head[(cur_line,i)] = data;
         cur_line+=5
 
-        test_file_base = r'.\\Data\\'+str(group)+'\\';
+        test_file_base = DATA_DIR / str(group)
         missing_data = self.load_missing_data(group,missing_filename);
         """load the raw feature file"""
-        workbook = xlrd.open_workbook(raw_file_name)
-        sheet2 = workbook.sheet_by_index(0) # 
-        sheet2 = workbook.sheet_by_name('Sheet1')
+        with open(raw_file_name, newline='') as f:
+            rows = list(csv.reader(f))
         head = missing_data.keys();
         cur_sample = 0;
         cur_row_index = 0;
@@ -312,11 +285,11 @@ class DataExtraction:
         entrace_lat_list = [0]*len(test_list);
         entrace_lont_list = [0]*len(test_list);
         candidat_nums = [0]*len(test_list);
-        while cur_row_index < sheet2.nrows:
-            entrance_index = int(sheet2.cell(cur_row_index,1).value)
-            entrance_x = float(sheet2.cell(cur_row_index,2).value)
-            entrance_y = float(sheet2.cell(cur_row_index,3).value)
-            cur_sample_num = int(sheet2.cell(cur_row_index,4).value);
+        while cur_row_index < len(rows):
+            entrance_index = int(float(rows[cur_row_index][1]))
+            entrance_x = float(rows[cur_row_index][2])
+            entrance_y = float(rows[cur_row_index][3])
+            cur_sample_num = int(float(rows[cur_row_index][4]));
             if cur_sample in test_list:
                 sample_index = test_list.index(cur_sample);
                 entrance_index_list[sample_index] = entrance_index;
@@ -325,17 +298,17 @@ class DataExtraction:
                 dis_array = [];
                 cur_building_features = []
                 temp_row_count = 0;
-                feature_num = int((int(sheet2.cell(cur_row_index+1,0).value-4))/2);
+                feature_num = int((int(float(rows[cur_row_index+1][0]))-4)/2);
                 temp_feature_valus =  [([0] * feature_num) for p in range(cur_sample_num)]  
-                temp_keys = set([]);
+                temp_keys = set();
                 temp_feature_names = set()
                 for row in range(cur_row_index+1,cur_row_index+cur_sample_num+1):
-                    dis_array.append(float(sheet2.cell(row,1).value))
+                    dis_array.append(float(rows[row][1]))
                     features = {};
-                    for j in range(0,feature_num):
-                        temp_feature_valus[temp_row_count][j] = float(sheet2.cell(row,4+j*2+1).value);
-                        features[str(sheet2.cell(row,4+j*2).value)] = float(sheet2.cell(row,4+j*2+1).value);
-                        temp_feature_names.add(str(sheet2.cell(row,4+j*2).value));
+                    for j in range(feature_num):
+                        temp_feature_valus[temp_row_count][j] = float(rows[row][4+j*2+1]);
+                        features[str(rows[row][4+j*2])] = float(rows[row][4+j*2+1]);
+                        temp_feature_names.add(str(rows[row][4+j*2]));
                     for f,ori_feat in enumerate(original_features):
                         if ori_feat in temp_feature_names:
                             features[new_exist_feat_names[f]] = 1;
@@ -343,7 +316,7 @@ class DataExtraction:
                             features[new_exist_feat_names[f]] = 0;
                     temp_row_count = temp_row_count + 1;
                     for key, value in missing_data.items():
-                        if key not in features.keys():
+                        if key not in features:
                             features[key] = value;
                             temp_keys.add(key);
                     cur_building_features.append(features);
@@ -352,45 +325,51 @@ class DataExtraction:
                         context_num[t]+=1;
                         
                 """save the samples for each test building """
-                test_file_name = test_file_base+str(cur_sample)+'rftest.csv';
-                if os.path.exists(test_file_name):
-                    os.remove(test_file_name);
-                with open(test_file_name,'w') as csvfile:
+                test_file_name = test_file_base / (str(cur_sample)+'rftest.csv')
+                with open(test_file_name, 'w', newline='') as csvfile:
                     fieldnames = head;
-                    writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+                    # features never seen in training have no imputed value, so drop them
+                    writer = csv.DictWriter(csvfile, fieldnames=fieldnames, extrasaction='ignore')
                     writer.writeheader()
                     for dic in cur_building_features:
                         writer.writerow(dic)
                 """save test head"""
                 candidat_nums[sample_index]=len(dis_array);
                 for i, data in enumerate(dis_array):
-                    ws_test_head.write(i+cur_line,sample_index,data);
+                    test_head[(i+cur_line,sample_index)] = data;
                 test_count = test_count + 1;
             cur_row_index = cur_row_index + cur_sample_num + 1;
             cur_sample +=1;
         for i, data in enumerate(entrance_index_list):
-            ws_test_head.write(1,i,data);
+            test_head[(1,i)] = data;
         for i, data in enumerate(candidat_nums):
-            ws_test_head.write(2,i,data);
+            test_head[(2,i)] = data;
         for i, data in enumerate(entrace_lat_list):
-            ws_test_head.write(3,i,data);
+            test_head[(3,i)] = data;
         for i, data in enumerate(entrace_lont_list):
-            ws_test_head.write(4,i,data);
-        f_test_head.save(test_head_file);
+            test_head[(4,i)] = data;
+        n_rows = max(r for r, c in test_head) + 1
+        with open(test_head_file, 'w', newline='') as f:
+            csv.writer(f).writerows([[test_head.get((r, c), '') for c in range(len(test_list))] for r in range(n_rows)])
           
 if __name__ == "__main__":
-     raw_file_name = r'.\\Data\\osmfeatures-test25.xls';
-     group_num = 5;
-     phy_dis_thres = 24
-     fea_dis_thres = 0.04
-     real_total_num = 0;
-     for i in range(1,group_num+1):
+     parser = argparse.ArgumentParser(description="Split the raw OSM feature file into per-group training/test sets.")
+     parser.add_argument("--data-dir", type=Path, default=DATA_DIR, help="Directory holding the raw file and the group folders.")
+     parser.add_argument("--raw-file", type=Path, help="Raw feature file (default: <data-dir>/osmfeatures-test25.csv).")
+     parser.add_argument("--groups", type=int, default=5, help="Number of cross-validation groups.")
+     parser.add_argument("--pt", type=float, default=24, help="Physical distance threshold PT (m).")
+     parser.add_argument("--ft", type=float, default=0.04, help="Feature distance threshold FT.")
+     args = parser.parse_args()
+     DATA_DIR = args.data_dir
+     raw_file_name = args.raw_file or DATA_DIR / 'osmfeatures-test25.csv'
+     for i in range(1,args.groups+1):
          print("*"*50)
          print(str(i)+"-th test group")
-         missing_filename = r'.\\Data\\'+str(i)+'\\missing.xls';
+         (DATA_DIR / str(i)).mkdir(exist_ok=True)
+         missing_filename = DATA_DIR / str(i) / 'missing.csv'
          model = DataExtraction()
-         group_file = r'.\\Data\\'+str(i)+'\\test_list.xls'
-         test_list_f = list(pd.read_excel(group_file,header=None).values[0])
-         test_list = [int(ele) for ele in test_list_f]
-         model.load_training_data(test_list,raw_file_name,missing_filename,i,phy_dis_thres,fea_dis_thres);
+         group_file = DATA_DIR / str(i) / 'test_list.csv'
+         with open(group_file, newline='') as f:
+             test_list = [int(float(ele)) for ele in next(csv.reader(f))]
+         model.load_training_data(test_list,raw_file_name,missing_filename,i,args.ft,args.pt)
          model.load_testing_data(test_list,raw_file_name,missing_filename,i)
